@@ -1,0 +1,139 @@
+version: "3.8"
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --providers.docker.swarmmode=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=proxy
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.le.acme.email=your-email@example.com
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certificates:/letsencrypt
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.dashboard.rule=Host(`traefik.colorspro.com.br`)"
+        - "traefik.http.routers.dashboard.service=api@internal"
+        - "traefik.http.routers.dashboard.tls.certresolver=le"
+        - "traefik.http.routers.dashboard.entrypoints=websecure"
+        - "traefik.http.services.dashboard.loadbalancer.server.port=8080"
+    networks:
+      - proxy
+
+  mariadb:
+    image: mariadb:10.11
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    environment:
+      MYSQL_ROOT_PASSWORD: ken172ji
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: ken172ji
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - backend
+
+  wordpress:
+    image: wordpress:6.4-fpm-alpine
+    deploy:
+      mode: replicated
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    environment:
+      WORDPRESS_DB_HOST: mariadb
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ken172ji
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_TABLE_PREFIX: wp_
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_CACHE', true);
+        define('WP_HOME','https://colorspro.com.br');
+        define('WP_SITEURL','https://colorspro.com.br');
+    volumes:
+      - wordpress_data:/var/www/html
+    networks:
+      - backend
+
+  nginx:
+    image: nginx:1.25-alpine
+    deploy:
+      mode: replicated
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.wordpress.rule=Host(`colorspro.com.br`,`www.colorspro.com.br`)"
+        - "traefik.http.routers.wordpress.tls=true"
+        - "traefik.http.routers.wordpress.tls.certresolver=le"
+        - "traefik.http.routers.wordpress.entrypoints=websecure"
+        - "traefik.http.services.wordpress.loadbalancer.server.port=80"
+    volumes:
+      - wordpress_data:/var/www/html:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - backend
+      - proxy
+    depends_on:
+      - wordpress
+
+networks:
+  proxy:
+    external: true
+  backend:
+    driver: overlay
+    attachable: true
+
+volumes:
+  traefik_certificates:
+  mysql_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/mysql_data
+  wordpress_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/wordpress_data
