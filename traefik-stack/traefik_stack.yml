@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  traefik:
+    image: traefik:v2.10
+    # command:
+    #   # - --api.insecure=true
+    #   - --providers.docker=true
+    #   - --entrypoints.web.address=:80
+    #   - --entrypoints.websecure.address=:443
+    #   - --providers.docker.exposedbydefault=false
+    #   - --providers.docker.network=proxy
+    #   # - --providers.docker.endpoint=unix:///var/run/docker.sock
+    #   - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+    #   - --certificatesresolvers.le.acme.email=emersontakada@gmail.com
+    #   - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+    #   - --certificatesresolvers.le.acme.tlschallenge=true
+    #   - --entrypoints.web.http.redirections.entrypoint.to=websecure
+    #   - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --providers.docker.swarmmode=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=proxy
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.le.acme.email=emersontakadal@gmail.com
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certificates:/letsencrypt
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.dashboard.rule=Host(`traefik.colorspro.com.br`)"
+        - "traefik.http.routers.dashboard.service=api@internal"
+        - "traefik.http.routers.dashboard.tls.certresolver=le"
+        - "traefik.http.routers.dashboard.entrypoints=websecure"
+        - "traefik.http.services.dashboard.loadbalancer.server.port=8080"
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true      
+
+volumes:
+  traefik_certificates:    

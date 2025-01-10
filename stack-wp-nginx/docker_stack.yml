@@ -13,7 +13,7 @@ services:
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.le.acme.httpchallenge=true
       - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
-      - --certificatesresolvers.le.acme.email=your-email@example.com
+      - --certificatesresolvers.le.acme.email=emersontakadal@gmail.com
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
@@ -106,6 +106,9 @@ services:
         - "traefik.http.routers.wordpress.tls.certresolver=le"
         - "traefik.http.routers.wordpress.entrypoints=websecure"
         - "traefik.http.services.wordpress.loadbalancer.server.port=80"
+    command: >
+        sh -c "chown -R www-data:www-data /var/cache/nginx && chmod -R 775 /var/cache/nginx && nginx -g 'daemon off;'"
+    
     volumes:
       - wordpress_data:/var/www/html:ro
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
